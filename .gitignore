@@ -1,3 +1,46 @@
+# IDEs
+.idea/
 *.iml
-/.idea
-/.idea/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform
+# Keep the lock file versioned to ensure reproducible provider versions
+# Do NOT ignore it
+# !terraform.lock.hcl
+
+# Terraform working directory at repo root
+/.terraform/
+
+# Local CLI config
+.terraformrc
+terraform.rc
+
+# Terraform working directories (any depth)
+**/.terraform/*
+
+# State files
+*.tfstate
+*.tfstate.*
+terraform.tfstate.d/
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Local overrides (do not commit)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Plans and variable files (may contain secrets)
+*.tfplan
+*.tfplan.*
+*.tfvars
+*.tfvars.json
