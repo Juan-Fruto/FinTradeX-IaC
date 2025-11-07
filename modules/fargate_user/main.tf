@@ -1,179 +1,140 @@
-########################
-# Networking Resources #
-########################
-
-resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
+variable "security_group_id" {
+  type        = string
+  description = "Security group ID to attach to the Fargate service"
 }
 
-resource "aws_subnet" "public_a" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  map_public_ip_on_launch = true
-  availability_zone       = "us-east-1a"
+variable "rds_endpoint" {
+  type        = string
+  description = "RDS endpoint for the application"
 }
 
-resource "aws_subnet" "public_b" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.2.0/24"
-  map_public_ip_on_launch = true
-  availability_zone       = "us-east-1b"
+variable "rds_username" {
+  type        = string
+  description = "RDS username"
 }
 
-resource "aws_internet_gateway" "gw" {
-  vpc_id = aws_vpc.main.id
+variable "rds_db_name" {
+  type        = string
+  description = "RDS database name"
 }
 
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.gw.id
-  }
+variable "rds_master_secret_arn" {
+  type        = string
+  description = "Secrets Manager ARN containing the auto-generated master password"
 }
 
-resource "aws_route_table_association" "a" {
-  subnet_id      = aws_subnet.public_a.id
-  route_table_id = aws_route_table.public.id
+#########################
+# ECS Cluster           #
+#########################
+
+resource "aws_ecs_cluster" "user_cluster" {
+  name = "user-service-cluster"
 }
 
-resource "aws_route_table_association" "b" {
-  subnet_id      = aws_subnet.public_b.id
-  route_table_id = aws_route_table.public.id
+#########################
+# IAM Roles             #
+#########################
+
+# IAM role for task execution (pulling images, writing logs)
+resource "aws_iam_role" "task_execution_role" {
+  name = "user_task_execution_role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Effect = "Allow"
+    }]
+  })
 }
 
-######################
-# ECS + Fargate Setup #
-######################
-
-resource "aws_ecs_cluster" "tomcat_cluster" {
-  name = "tomcat-cluster"
+resource "aws_iam_role_policy_attachment" "task_execution_policy" {
+  role       = aws_iam_role.task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-resource "aws_security_group" "alb_sg" {
-  vpc_id = aws_vpc.main.id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_lb" "app_lb" {
-  name               = "tomcat-lb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb_sg.id]
-  subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
-}
-
-resource "aws_lb_target_group" "tg" {
-  name         = "tomcat-tg"
-  port         = 8080
-  protocol     = "HTTP"
-  vpc_id       = aws_vpc.main.id
-  target_type  = "ip"  # ✅ required for Fargate
-
-  health_check {
-    path = "/"
-  }
-}
-
-resource "aws_lb_listener" "listener" {
-  load_balancer_arn = aws_lb.app_lb.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.tg.arn
-  }
+# (Optional) task role if container needs AWS API access in future
+resource "aws_iam_role" "task_role" {
+  name = "user_task_role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Effect = "Allow"
+    }]
+  })
 }
 
 #########################
 # ECS Task + Service    #
 #########################
 
-resource "aws_ecs_task_definition" "tomcat_task" {
-  family                   = "tomcat-task"
-  network_mode             = "awsvpc"
+resource "aws_ecs_task_definition" "user_service" {
+  family                   = "user-service"
   requires_compatibilities  = ["FARGATE"]
-  cpu                      = "512"
-  memory                   = "1024"
-  execution_role_arn       = aws_iam_role.ecs_task_exec.arn
+  network_mode             = "awsvpc"
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.task_execution_role.arn
+  task_role_arn            = aws_iam_role.task_role.arn
 
   container_definitions = jsonencode([
     {
-      name      = "tomcat"
-      image     = "tomcat:9.0"
+      name      = "user"
+      image     = "699475922534.dkr.ecr.us-east-1.amazonaws.com/dev/find-trade-x-rep:latest"
       essential = true
       portMappings = [
         {
-          containerPort = 8080
-          hostPort      = 8080
+          containerPort = 8082
+          hostPort      = 8082
+          protocol      = "tcp"
+        }
+      ]
+      environment = [
+        { name = "DB_HOST", value = var.rds_endpoint },
+        { name = "DB_USER", value = var.rds_username },
+        { name = "DB_NAME", value = var.rds_db_name },
+        { name = "SERVER_PORT", value = "8082" }
+      ]
+      secrets = [
+        {
+          name      = "DB_PASSWORD"
+          valueFrom = var.rds_master_secret_arn
         }
       ]
     }
   ])
 }
 
-resource "aws_iam_role" "ecs_task_exec" {
-  name = "ecsTaskExecutionRole"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        },
-        Action = "sts:AssumeRole"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_task_exec_policy" {
-  role       = aws_iam_role.ecs_task_exec.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-resource "aws_ecs_service" "tomcat_service" {
-  name            = "tomcat-service"
-  cluster         = aws_ecs_cluster.tomcat_cluster.id
-  task_definition = aws_ecs_task_definition.tomcat_task.arn
-  desired_count   = 1
+resource "aws_ecs_service" "user_service" {
+  name            = "user-service"
+  cluster         = aws_ecs_cluster.user_cluster.id
+  task_definition = aws_ecs_task_definition.user_service.arn
   launch_type     = "FARGATE"
+  desired_count   = 1
 
   network_configuration {
-    subnets         = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+    subnets         = data.aws_subnets.default.ids
+    security_groups = [var.security_group_id]
     assign_public_ip = true
-    security_groups  = [aws_security_group.alb_sg.id]
   }
 
-  load_balancer {
-    target_group_arn = aws_lb_target_group.tg.arn
-    container_name   = "tomcat"
-    container_port   = 8080
-  }
-
-  depends_on = [aws_lb_listener.listener]
+  depends_on = [aws_ecs_task_definition.user_service]
 }
 
-########################
-# Output
-########################
-output "load_balancer_dns" {
-  value = aws_lb.app_lb.dns_name
+# Data sources for default VPC subnets (public)
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+output "ecs_service_name" {
+  value = aws_ecs_service.user_service.name
 }
