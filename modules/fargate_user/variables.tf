@@ -29,5 +29,5 @@ variable "rds_master_secret_arn" {
 
 variable "ecr_uri" {
   type = string
-    description = "ECR URI for the Docker images"
+  description = "ECR URI for the Docker images"
 }
