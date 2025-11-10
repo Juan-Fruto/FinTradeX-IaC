@@ -1,5 +1,6 @@
 variable "env" {
-    type = string
+    type        = string
+    description = "Environment name (e.g., dev, staging, prod)"
 }
 
 variable "security_group_id" {
