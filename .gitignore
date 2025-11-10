@@ -14,8 +14,12 @@ Thumbs.db
 # Do NOT ignore it
 # !terraform.lock.hcl
 
-# Terraform working directory at repo root
-/.terraform/providers
+# Compiled files
+*.tfstate.backup
+.terraform.tfstate.lock.info
+
+# Module directory
+.terraform/
 
 # Local CLI config
 .terraformrc

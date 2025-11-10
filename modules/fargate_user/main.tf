@@ -1,28 +1,3 @@
-variable "security_group_id" {
-  type        = string
-  description = "Security group ID to attach to the Fargate service"
-}
-
-variable "rds_endpoint" {
-  type        = string
-  description = "RDS endpoint for the application"
-}
-
-variable "rds_username" {
-  type        = string
-  description = "RDS username"
-}
-
-variable "rds_db_name" {
-  type        = string
-  description = "RDS database name"
-}
-
-variable "rds_master_secret_arn" {
-  type        = string
-  description = "Secrets Manager ARN containing the auto-generated master password"
-}
-
 #########################
 # ECS Cluster           #
 #########################
@@ -82,7 +57,7 @@ resource "aws_ecs_task_definition" "user_service" {
   container_definitions = jsonencode([
     {
       name      = "user"
-      image     = "699475922534.dkr.ecr.us-east-1.amazonaws.com/dev/find-trade-x-rep:latest"
+      image     = "${var.ecr_uri}/${var.env}/find-trade-x-rep:latest"
       essential = true
       portMappings = [
         {
@@ -92,14 +67,12 @@ resource "aws_ecs_task_definition" "user_service" {
         }
       ]
       environment = [
-        { name = "DB_HOST", value = var.rds_endpoint },
-        { name = "DB_USER", value = var.rds_username },
-        { name = "DB_NAME", value = var.rds_db_name },
-        { name = "SERVER_PORT", value = "8082" }
+        { name = "FIN_TRADE_X_RDB_URL", value = "${var.rds_endpoint}/${var.rds_db_name}" },
+        { name = "FIN_TRADE_X_RDB_USERNAME", value = var.rds_username },
       ]
       secrets = [
         {
-          name      = "DB_PASSWORD"
+          name      = "FIN_TRADE_X_RDB_PASSWORD"
           valueFrom = var.rds_master_secret_arn
         }
       ]
