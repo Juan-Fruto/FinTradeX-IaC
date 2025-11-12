@@ -9,7 +9,12 @@ terraform {
 
 variable "env" {
   description = "Environment name (e.g., dev, staging, prod)"
-  type = string
+  type        = string
+}
+
+variable "ecr_uri" {
+  description = "ECR URI for the Docker images"
+  type        = string
 }
 
 provider "aws" {
@@ -21,7 +26,7 @@ module "security" {
 }
 
 module "rds_fin_trade_x_db" {
-  source = "./modules/rds_fin_trade_x_db"
+  source                = "./modules/rds_fin_trade_x_db"
   vpc_security_group_ids = [module.security.rds_sg_id]
 }
 
@@ -33,4 +38,7 @@ module "fargate_user" {
   rds_username          = module.rds_fin_trade_x_db.rds_username
   rds_db_name           = module.rds_fin_trade_x_db.rds_db_name
   rds_master_secret_arn = module.rds_fin_trade_x_db.rds_master_secret_arn
+
+  env                   = var.env
+  ecr_uri               = var.ecr_uri
 }
