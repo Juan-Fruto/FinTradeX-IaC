@@ -1,1 +1,1 @@
-{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"fargate_user","Source":"./modules/fargate_user","Dir":"modules/fargate_user"}]}
+{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"fargate_user","Source":"./modules/fargate_user","Dir":"modules/fargate_user"},{"Key":"rds_fin_trade_x_db","Source":"./modules/rds_fin_trade_x_db","Dir":"modules/rds_fin_trade_x_db"},{"Key":"security","Source":"./modules/security","Dir":"modules/security"}]}

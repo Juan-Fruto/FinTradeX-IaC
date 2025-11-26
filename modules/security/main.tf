@@ -2,6 +2,12 @@ data "aws_vpc" "default" {
   default = true
 }
 
+variable "allowed_cidr" {
+  type        = string
+  description = "CIDR permitido para acceder a RDS desde fuera. Cambiar por YOUR_IP/32 si es posible."
+  default     = "0.0.0.0/0"
+}
+
 resource "aws_security_group" "fargate_instance_sg" {
   name        = "fargate-instance-sg"
   description = "Security group for public Fargate instances"
@@ -46,6 +52,18 @@ resource "aws_security_group_rule" "rds_ingress_mysql" {
   security_group_id        = aws_security_group.rds_sg.id
 }
 
+/* Permitir acceso externo directo desde el CIDR configurado (ej. 0.0.0.0/0 para conexión directa desde cliente local) */
+resource "aws_security_group_rule" "rds_ingress_cidr" {
+  type              = "ingress"
+  from_port         = 3306
+  to_port           = 3306
+  protocol          = "tcp"
+  cidr_blocks       = [var.allowed_cidr]
+  description       = "Allow MySQL access from configured CIDR (change to YOUR_IP/32 for safety)"
+
+  security_group_id = aws_security_group.rds_sg.id
+}
+
 resource "aws_security_group_rule" "rds_all_outbound" {
   type              = "egress"
   from_port         = 0
@@ -55,6 +73,8 @@ resource "aws_security_group_rule" "rds_all_outbound" {
 
   security_group_id = aws_security_group.rds_sg.id
 }
+
+
 
 output "fargate_instance_sg_id" {
   value = aws_security_group.fargate_instance_sg.id
