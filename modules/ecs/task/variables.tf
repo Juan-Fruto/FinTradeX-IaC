@@ -3,11 +3,6 @@ variable "env" {
     description = "Environment name (e.g., dev, staging, prod)"
 }
 
-variable "security_group_id" {
-  type        = string
-  description = "Security group ID to attach to the Fargate service"
-}
-
 variable "rds_endpoint" {
   type        = string
   description = "RDS endpoint for the application"
@@ -31,4 +26,14 @@ variable "rds_master_secret_arn" {
 variable "ecr_uri" {
   type = string
   description = "ECR URI for the Docker images"
+}
+
+variable "datadog_uri" {
+    type        = string
+    description = "Datadog URI, varies by region"
+}
+
+variable "datadog_api_key" {
+  type        = string
+  description = "Datadog API key for monitoring fargate tasks"
 }

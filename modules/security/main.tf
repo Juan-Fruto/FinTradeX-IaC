@@ -74,6 +74,8 @@ resource "aws_security_group_rule" "rds_all_outbound" {
   security_group_id = aws_security_group.rds_sg.id
 }
 
+
+
 output "fargate_instance_sg_id" {
   value = aws_security_group.fargate_instance_sg.id
 }

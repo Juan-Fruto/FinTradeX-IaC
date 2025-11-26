@@ -10,7 +10,6 @@ resource "aws_ecs_cluster" "user_cluster" {
 # IAM Roles             #
 #########################
 
-# IAM role for task execution (pulling images, writing logs)
 resource "aws_iam_role" "task_execution_role" {
   name = "user_task_execution_role"
   assume_role_policy = jsonencode({
@@ -28,7 +27,6 @@ resource "aws_iam_role_policy_attachment" "task_execution_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# Allow execution role to read the DB password secret from Secrets Manager
 resource "aws_iam_role_policy" "task_execution_secrets" {
   name = "ecs_task_execution_read_rds_secret"
   role = aws_iam_role.task_execution_role.id
@@ -44,7 +42,6 @@ resource "aws_iam_role_policy" "task_execution_secrets" {
   })
 }
 
-# (Optional) task role if container needs AWS API access in future
 resource "aws_iam_role" "task_role" {
   name = "user_task_role"
   assume_role_policy = jsonencode({
@@ -57,31 +54,49 @@ resource "aws_iam_role" "task_role" {
   })
 }
 
-#########################
-# Logging               #
-#########################
-
-# CloudWatch Log Group for container logs
-resource "aws_cloudwatch_log_group" "user_service" {
-  name              = "/ecs/user-service-${var.env}"
-  retention_in_days = 5
+resource "aws_iam_policy" "datadog_ecs_readonly" {
+  name        = "datadog_ecs_readonly"
+  description = "Allow Datadog agent to list and describe ECS resources"
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "ecs:ListClusters",
+          "ecs:ListContainerInstances",
+          "ecs:DescribeContainerInstances"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
 }
 
-# Current AWS region to configure awslogs
-data "aws_region" "current" {}
+resource "aws_iam_role_policy_attachment" "datadog_ecs_readonly_attach" {
+  role       = aws_iam_role.task_role.name
+  policy_arn = aws_iam_policy.datadog_ecs_readonly.arn
+}
 
 #########################
 # ECS Task + Service    #
 #########################
 
-resource "aws_ecs_task_definition" "user_service" {
-  family                   = "user-service"
+module "user_task_definition" {
+
+  source = "DataDog/ecs-datadog/aws//modules/ecs_fargate"
+
+  family       = "user-service"
   requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = 256
-  memory                   = 512
-  execution_role_arn       = aws_iam_role.task_execution_role.arn
-  task_role_arn            = aws_iam_role.task_role.arn
+  network_mode = "awsvpc"
+  cpu          = 256
+  memory       = 512
+  execution_role = {
+    arn = aws_iam_role.task_execution_role.arn
+  }
+  task_role = {
+    arn = aws_iam_role.task_role.arn
+  }
 
   container_definitions = jsonencode([
     {
@@ -105,42 +120,32 @@ resource "aws_ecs_task_definition" "user_service" {
           valueFrom = "${var.rds_master_secret_arn}:password::"
         }
       ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.user_service.name
-          "awslogs-region"        = data.aws_region.current.name
-          "awslogs-stream-prefix" = "user"
-        }
-      }
     }
   ])
-}
 
-resource "aws_ecs_service" "user_service" {
-  name            = "user-service"
-  cluster         = aws_ecs_cluster.user_cluster.id
-  task_definition = aws_ecs_task_definition.user_service.arn
-  launch_type     = "FARGATE"
-  desired_count   = 1
+  # datadog configuration
 
-  network_configuration {
-    subnets          = data.aws_subnets.default.ids
-    security_groups  = [var.security_group_id]
-    assign_public_ip = true
+  dd_api_key = var.datadog_api_key
+  dd_site    = var.datadog_uri
+  dd_dogstatsd = {
+    enabled = true,
+  }
+  dd_apm = {
+    enabled = true,
+  }
+  dd_log_collection = {
+    enabled = true
+    fluentbit_config = {
+      api_key                          = var.datadog_api_key
+
+      is_log_router_essential          = true
+      is_log_router_dependency_enabled = true
+
+      log_driver_configuration = {
+        host_endpoint = "http-intake.logs.${var.datadog_uri}"
+        tls = true
+      }
+    }
   }
 
-  depends_on = [aws_ecs_task_definition.user_service]
-}
-
-# Data sources for default VPC subnets (public)
-data "aws_vpc" "default" {
-  default = true
-}
-
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
 }
